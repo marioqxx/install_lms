@@ -1,0 +1,34 @@
+# The filename of the local downloaded file. If provided, the file is copied, otherwise it is downloaded.
+lms_server: ""
+
+# A list of plugins. Each list member is a dictionary. It must contain a "name" or "title"-tag.
+# optionally may include a file-tag and addfile-tag.
+
+lms_plugins: []
+
+# A list of settings. Each list member is a list comprising (at least) three strings.
+# The first list-parameter is the command, e.g. "pref" for reading and writing settings.
+# The second list-parameter is the command option, e.g. "info" or "plugin.extensions:plugin"
+#     for the setting to be queried or set.
+# The thrid parameter is either "?" to query the value of the setting of if a value is provided
+# the value to be set. If the setting is a dictionary, then is has to be embraced with "{}".
+# If it is a list, then with "[]".
+lms_settings: []
+
+# The directory where LMS stores the settings and plugins. NO! trailing slash "/".
+lms_settings_dir: "/var/lib/squeezeboxserver"
+
+# Ports
+lms_port: 9000
+lms_rpcport: 9090
+
+# WEB-location of plugin repository
+lms_extensions_url: "https://github.com/LMS-Community/lms-plugin-repository/raw/master/extensions.xml"
+
+# WEB-location of logitechmediaserver .deb package. Needs the architecture to select the correct file.
+lms_package_url: "https://downloads.slimdevices.com/nightly/index.php?ver=8.4"
+lms_arch: "amd64"
+
+# The User and group for the LMS-server
+lms_owner: squeezeboxserver
+lms_group: squeezeboxserver

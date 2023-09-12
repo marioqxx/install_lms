@@ -1,0 +1,230 @@
+---
+- name: "[LMS] - Create squeezeboxserver-group."
+  ansible.builtin.group:
+    name: "{{ lms_owner }}"
+    state: present
+  tags:
+    - lms
+
+- name: "[LMS] - Create squeezeboxserver-user and add to primary group squeezeboxserver-group."
+  ansible.builtin.user:
+    name: "{{ lms_owner }}"
+    group: "{{ lms_group }}"
+    state: present
+    system: true
+  tags:
+    - lms
+
+- name: "[LMS] - Copy LMS Logitech Media Server .deb package to remote-host."
+  ansible.builtin.copy:
+    src: "{{ lms_server }}"
+    dest: "/tmp/logitechmediaserver_amd64.deb"
+    owner: "{{ lms_owner }}"
+    group: "{{ lms_group }}"
+    mode: u=rw,g=r,o=r
+  tags:
+    - lms
+
+- name: "[LMS] - Install LMS Logitech Media Server .deb package."
+  ansible.builtin.apt:
+    deb: "/tmp/logitechmediaserver_amd64.deb"
+  tags:
+    - lms
+
+# Plugin-archive download-links are included in file extensions.xml, located at:
+# https://github.com/LMS-Community/lms-plugin-repository/raw/master/extensions.xml
+- name: "[LMS] - Obtain list of plugins and their details, including download-link."
+  ansible.builtin.get_url:
+    url: "{{ lms_extensions_url }}"
+    dest: "/tmp/extensions.xml"
+    mode: u=rw,g=r,o=r
+  delegate_to: localhost
+  become: false
+  tags:
+    - lms
+    - plugin
+
+# Obtain Plugin-details, including download-link for archive download through plugin-name or auxiliarily plugin-title.
+# Documentation for XPath: https://www.w3schools.com/xml/xpath_syntax.asp
+# E.g. filtering for tag title: xpath: "/extensions/plugins/plugin[title='AirPlay bridge']"
+# or filtering for attribute: xpath: "/extensions/plugins/plugin[@name='RaopBridge']"
+- name: "[LMS] - Read the plugin-information based on given plugin-name or if given plugin-title."
+  community.general.xml:
+    path: "/tmp/extensions.xml"
+    xpath: "/extensions/plugins/plugin[{{ xmatch }}]"
+    content: attribute
+  delegate_to: localhost
+  become: false
+  register: xmlresponse
+  loop: "{{ lms_plugins }}"
+  loop_control:
+    label: "Obtaining plugin-details for plugin with {{ xmatch }}."
+  vars:
+    xmatch: "{{ '@name=\"' ~ item.name ~ '\"' if item.name is defined else 'title=\"' ~ item.title ~ '\"' }}"
+  when: (item.title is defined) or (item.name is defined)
+  tags:
+    - lms
+    - plugin
+
+# Download the plugin-archive-file if no "file"-tag is configured. If a file-tag is configured, then
+# copy the file from the source-directory to the destination and rename to plugin-name.
+- name: "[LMS] - Download LMS Logitech Media Server Plugin zip-files."
+  ansible.builtin.get_url:
+    url: "{{ item.matches[0].plugin.url }}"
+    dest: "{{ lms_settings_dir }}/cache/DownloadedPlugins/{{ item.matches[0].plugin.name }}.zip"
+    owner: "{{ lms_owner }}"
+    group: "{{ lms_group }}"
+    mode: u=rw,g=rw,o=r
+  loop: "{{ xmlresponse.results }}"
+  loop_control:
+    label: "Downloading plugin {{ item.matches[0].plugin.name }} from {{ item.matches[0].plugin.url }}"
+  when: item.item.file is not defined
+  tags:
+    - lms
+    - plugin
+
+- name: "[LMS] - Copy LMS Logitech Media Server Plugin zip-files."
+  ansible.builtin.copy:
+    src: "{{ item.item.file }}"
+    dest: "{{ lms_settings_dir }}/cache/DownloadedPlugins/{{ item.matches[0].plugin.name }}.zip"
+    owner: "{{ lms_owner }}"
+    group: "{{ lms_group }}"
+    mode: u=rw,g=rw,o=r
+  loop: "{{ xmlresponse.results }}"
+  loop_control:
+    label: "Copying plugin with {{ 'title ' ~ item.item.title if item.item.title is defined else 'name ' ~ item.item.name }} to remote host."
+  when: item.item.file is defined and ((item.item.title is defined) or (item.item.name is defined))
+  tags:
+    - lms
+    - plugin
+
+- name: "[LMS] - Copy additional files for plugins."
+  ansible.builtin.copy:
+    src: "{{ item.item.addfile }}"
+    dest: "{{ lms_settings_dir }}/prefs/{{ item.item.addfile | basename }}"
+    owner: "{{ lms_owner }}"
+    group: "{{ lms_group }}"
+    mode: u=rw,g=rw,o=r
+  loop: "{{ xmlresponse.results }}"
+  loop_control:
+    label: "Copying for plugin additional file {{ item.item.addfile | default('n/a') }} to remote host."
+  when: item.item.addfile is defined
+  tags:
+    - lms
+    - plugin
+
+# Manually modify state.prefs file. Could also be done through json-api call.
+# Source: https://forums.slimdevices.com/forum/user-forums/logitech-media-server/105068-manually-installing-plugin-zips
+#         https://github.com/Logitech/slimserver/discussions/902
+#         https://stackoverflow.com/questions/60571048/ansible-read-yaml-file-from-remote-location-into-variable
+#         https://ttl255.com/ansible-getting-date-and-timestamp/
+- name: "{{ '[LMS] - Read prefs-file ' ~ lms_settings_dir ~ '/prefs/plugin/state.prefs.' }}"
+  ansible.builtin.slurp:
+    src: "{{ lms_settings_dir }}/prefs/plugin/state.prefs"
+  register: pref_file
+  tags:
+    - plugin
+
+- name: "[LMS] - Convert prefs-file state.prefs to yaml."
+  ansible.builtin.set_fact:
+    prefs_yaml: '{{ pref_file.content | b64decode | from_yaml }}'
+  tags:
+    - plugin
+
+- name: "[LMS] - Set state.prefs for plugin-installation upon next server start."
+  ansible.builtin.set_fact:
+    prefs_yaml: "{{ prefs_yaml | combine({ pluginname : 'needs-install', '_ts_' ~ pluginname : ansible_date_time.epoch | int }) }}"
+  loop: "{{ xmlresponse.results }}"
+  loop_control:
+    label: "Setting state.prefs for installation of plugin with {{ title }}name {{ pluginname }}"
+  vars:
+    pluginname: "{{ item.matches[0].plugin.name }}"
+    title: "{{ 'title \"' ~ item.item.title ~ '\" and ' if item.item.title is defined else '' }}"
+  tags:
+    - plugin
+
+- name: "[LMS] - Write prefs-file state.prefs."
+  ansible.builtin.template:
+    src: "templates/yaml.j2"
+    dest: "{{ lms_settings_dir }}/prefs/plugin/state.prefs"
+    owner: "{{ lms_owner }}"
+    group: "{{ lms_group }}"
+    mode: u=rw,g=rw,o=r
+  tags:
+    - plugin
+
+# Manually modify extensions.prefs file. Could also be done through json-api call.
+- name: "{{ '[LMS] - Read prefs-file ' ~ lms_settings_dir ~ '/plugin/extensions.prefs.' }}"
+  ansible.builtin.slurp:
+    src: "{{ lms_settings_dir }}/prefs/plugin/extensions.prefs"
+  register: pref_file
+  tags:
+    - plugin
+
+- name: "[LMS] - Convert prefs-file extensions.prefs to yaml."
+  ansible.builtin.set_fact:
+    prefs_yaml: '{{ pref_file.content | b64decode | from_yaml }}'
+  tags:
+    - plugin
+
+- name: "[LMS] - Set extensions.prefs for plugin-installation upon next server start."
+  ansible.builtin.set_fact:
+    prefs_yaml: "{{ prefs_yaml | combine({'plugin': {pluginname: 1}}, recursive=true) }}"
+  loop: "{{ xmlresponse.results }}"
+  loop_control:
+    label: "Setting extensions.prefs for installation of plugin with {{ title }}name {{ pluginname }}"
+  vars:
+    pluginname: "{{ item.matches[0].plugin.name }}"
+    title: "{{ 'title \"' ~ item.item.title ~ '\" and ' if item.item.title is defined else '' }}"
+  tags:
+    - plugin
+
+- name: "[LMS] - Write prefs-file extensions.prefs."
+  ansible.builtin.template:
+    src: "templates/yaml.j2"
+    dest: "{{ lms_settings_dir }}/prefs/plugin/extensions.prefs"
+    owner: "{{ lms_owner }}"
+    group: "{{ lms_group }}"
+    mode: u=rw,g=rw,o=r
+  tags:
+    - plugin
+
+# Restart the server to install the plugins and create plugin prefs-files.
+- name: "[LMS] - Restart the server to complete plugin-installation."
+  ansible.builtin.systemd:
+    name: logitechmediaserver
+    state: restarted
+  tags:
+    - plugin
+
+- name: "{{ '[LMS] - Wait availability port ' ~ lms_rpcport ~ ', indicating server ready.' }}"
+  ansible.builtin.wait_for:
+    port: "{{ lms_rpcport }}"
+  tags:
+    - plugin
+
+# Configure the server and its config-files through jsonrpc-API.
+# Note: The config through telnet did not work, although manually via
+# telnet localhost 9000 from commandline worked. This may have something to
+# do because LMS does not implement a telnet protocol and/or the ansible
+# module isn't able to login without username/password and set to stream-mode.
+- name: "[LMS] - Through json-rpc API configure the server and plugins."
+  ansible.builtin.uri:
+    url: "http://{{ lms_fqdn }}:{{ lms_port }}/jsonrpc.js"
+    method: POST
+    body_format: json
+    body:
+      id: 1
+      method: "slim.request"
+      params: [" ", "{{ item }}"]
+  loop: "{{ lms_settings }}"
+  tags:
+    - conf
+
+# Restart the server.
+- name: "[LMS] - Restart the server to complete plugin-installation."
+  ansible.builtin.systemd:
+    name: logitechmediaserver
+    state: restarted
+  tags:
+    - conf
