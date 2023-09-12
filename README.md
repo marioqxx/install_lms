@@ -1,2 +1,2 @@
-# install_lms
-Install the logitechmediaserver
+# lms
+An ansible role for installing and configuring the logitechmediaserver
