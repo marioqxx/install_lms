@@ -18,16 +18,41 @@
 - name: "[LMS] - Copy LMS Logitech Media Server .deb package to remote-host."
   ansible.builtin.copy:
     src: "{{ lms_server }}"
-    dest: "/tmp/logitechmediaserver_amd64.deb"
+    dest: "/tmp/{{ lms_server | basename }}"
     owner: "{{ lms_owner }}"
     group: "{{ lms_group }}"
     mode: u=rw,g=r,o=r
+  when: lms_server | length > 0
   tags:
     - lms
 
+- name: "[LMS] - Download LMS Logitech Media Server .deb package from online-repository."
+  when: lms_server | length == 0
+  tags:
+    - lms
+  block:
+    - name: "[LMS] - Obtain list of LMS Logitech Media Server packages for download."
+      ansible.builtin.get_url:
+        url: "{{ lms_server_repo_url }}"
+        dest: "/tmp/packages.html"
+        mode: u=rw,g=r,o=r
+      delegate_to: localhost
+      become: false
+
+    - name: "[LMS] - Download LMS Logitech Media Server .deb package to remote-host."
+      ansible.builtin.get_url:
+        url: "{{ lms_server_url ~ (repo | regex_search( pattern, '\\1', ignorecase=true))[0] }}"
+        dest: "/tmp/{{ lms_server | basename }}"
+        owner: "{{ lms_owner }}"
+        group: "{{ lms_group }}"
+        mode: u=rw,g=r,o=r
+      vars:
+        repo: "{{  lookup('ansible.builtin.file', '/tmp/packages.html') }}"
+        pattern: "{{ '.*<a.href=\"..(.*' ~ lms_server_arch ~ '.deb).*\">' }}"
+
 - name: "[LMS] - Install LMS Logitech Media Server .deb package."
   ansible.builtin.apt:
-    deb: "/tmp/logitechmediaserver_amd64.deb"
+    deb: "/tmp/{{ lms_server | basename }}"
   tags:
     - lms
 
@@ -108,7 +133,7 @@
   loop: "{{ xmlresponse.results }}"
   loop_control:
     label: "Copying for plugin additional file {{ item.item.addfile | default('n/a') }} to remote host."
-  when: item.item.addfile is defined
+  when: item.item.addfile is defined and ((item.item.title is defined) or (item.item.name is defined))
   tags:
     - lms
     - plugin
@@ -197,7 +222,7 @@
   tags:
     - plugin
 
-- name: "{{ '[LMS] - Wait availability port ' ~ lms_rpcport ~ ', indicating server ready.' }}"
+- name: "{{ '[LMS] - Wait availability of port ' ~ lms_rpcport ~ ', which indicates server ready.' }}"
   ansible.builtin.wait_for:
     port: "{{ lms_rpcport }}"
   tags:

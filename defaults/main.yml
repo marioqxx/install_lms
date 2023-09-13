@@ -26,8 +26,10 @@ lms_rpcport: 9090
 lms_extensions_url: "https://github.com/LMS-Community/lms-plugin-repository/raw/master/extensions.xml"
 
 # WEB-location of logitechmediaserver .deb package. Needs the architecture to select the correct file.
-lms_package_url: "https://downloads.slimdevices.com/nightly/index.php?ver=8.4"
-lms_arch: "amd64"
+lms_server_version: "8.4"
+lms_server_arch: "amd64"
+lms_server_url: "https://downloads.slimdevices.com/nightly/"
+lms_server_repo_url: "{{ lms_server_url }}index.php?ver={{ lms_server_version }}"
 
 # The User and group for the LMS-server
 lms_owner: squeezeboxserver
