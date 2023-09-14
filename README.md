@@ -8,7 +8,7 @@ Ansible >= 2.11
 This example playbook installs LMS and the plugins Raopbridge (Air Bridge), CastBridge (Chromecast Bridge), Material Skin, Spotty and UPnPBridge. It also makes some configuration settings, so that after install it is ready to use, without the need to run through the wizard or change the skin. It readily starts up with Material Skin and shows UPnP-devices as well as Air Play-devices.
 
 ## Minimal configuration with plugins
-In a minimal example, you do not need to create the subdirectories files/lms and place any files. All will be downloaded automatically. The minimal configuration the simplifies to:
+In a minimal example, you do not need to create the subdirectories files/lms and place any files. All will be downloaded automatically with the latest version, which are the nightly .deb packages for logitechmediaserver.deb. This minimal configuration looks like this:
 
 Directory structure:
 ```yaml
