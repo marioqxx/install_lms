@@ -5,7 +5,7 @@ An ansible role for installing and configuring the logitechmediaserver. Also ref
 Ansible >= 2.11
 
 # Example playbooks
-This example playbook installs LMS and the plugins Raopbridge (Air Bridge), CastBridge (Chromecast Bridge), Material Skin, Spotty and UPnPBridge.
+This example playbook installs LMS and the plugins Raopbridge (Air Bridge), CastBridge (Chromecast Bridge), Material Skin, Spotty and UPnPBridge. It also makes some configuration settings, so that after install it is ready to use, without the need to run through the wizard or change the skin. It readily starts up with Material Skin and showns UPNP as well as Air Play devices.
 
 ## Minimal configuration with plugins
 In a minimal example, you do not need to create the subdirectories files/lms and place any files. All will be downloaded automatically. The minimal configuration the simplifies to:
