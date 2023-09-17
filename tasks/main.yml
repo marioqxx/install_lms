@@ -4,7 +4,7 @@
     name: "{{ lms_owner }}"
     state: present
   tags:
-    - lms
+    - lms_install
 
 - name: "[LMS] - Create squeezeboxserver-user and add to primary group squeezeboxserver-group."
   ansible.builtin.user:
@@ -13,7 +13,7 @@
     state: present
     system: true
   tags:
-    - lms
+    - lms_install
 
 - name: "[LMS] - Copy LMS Logitech Media Server .deb package to remote-host."
   ansible.builtin.copy:
@@ -24,12 +24,12 @@
     mode: u=rw,g=r,o=r
   when: lms_server | length > 0
   tags:
-    - lms
+    - lms_install
 
 - name: "[LMS] - Download LMS Logitech Media Server .deb package from online-repository."
   when: lms_server | length == 0
   tags:
-    - lms
+    - lms_install
   block:
     - name: "[LMS] - Obtain list of LMS Logitech Media Server packages for download."
       ansible.builtin.get_url:
@@ -54,7 +54,7 @@
   ansible.builtin.apt:
     deb: "/tmp/{{ lms_server | basename }}"
   tags:
-    - lms
+    - lms_install
 
 # Plugin-archive download-links are included in file extensions.xml, located at:
 # https://github.com/LMS-Community/lms-plugin-repository/raw/master/extensions.xml
@@ -66,8 +66,7 @@
   delegate_to: localhost
   become: false
   tags:
-    - lms
-    - plugin
+    - lms_plugin
 
 # Obtain Plugin-details, including download-link for archive download through plugin-name or auxiliarily plugin-title.
 # Documentation for XPath: https://www.w3schools.com/xml/xpath_syntax.asp
@@ -88,8 +87,7 @@
     xmatch: "{{ '@name=\"' ~ item.name ~ '\"' if item.name is defined else 'title=\"' ~ item.title ~ '\"' }}"
   when: (item.title is defined) or (item.name is defined)
   tags:
-    - lms
-    - plugin
+    - lms_plugin
 
 # Download the plugin-archive-file if no "file"-tag is configured. If a file-tag is configured, then
 # copy the file from the source-directory to the destination and rename to plugin-name.
@@ -105,8 +103,7 @@
     label: "Downloading plugin {{ item.matches[0].plugin.name }} from {{ item.matches[0].plugin.url }}"
   when: item.item.file is not defined
   tags:
-    - lms
-    - plugin
+    - lms_plugin
 
 - name: "[LMS] - Copy LMS Logitech Media Server Plugin zip-files."
   ansible.builtin.copy:
@@ -120,8 +117,7 @@
     label: "Copying plugin with {{ 'title ' ~ item.item.title if item.item.title is defined else 'name ' ~ item.item.name }} to remote host."
   when: item.item.file is defined and ((item.item.title is defined) or (item.item.name is defined))
   tags:
-    - lms
-    - plugin
+    - lms_plugin
 
 - name: "[LMS] - Copy additional files for plugins."
   ansible.builtin.copy:
@@ -135,8 +131,7 @@
     label: "Copying for plugin additional file {{ item.item.addfile | default('n/a') }} to remote host."
   when: item.item.addfile is defined and ((item.item.title is defined) or (item.item.name is defined))
   tags:
-    - lms
-    - plugin
+    - lms_plugin
 
 # Manually modify state.prefs file. Could also be done through json-api call.
 # Source: https://forums.slimdevices.com/forum/user-forums/logitech-media-server/105068-manually-installing-plugin-zips
@@ -148,13 +143,13 @@
     src: "{{ lms_settings_dir }}/prefs/plugin/state.prefs"
   register: pref_file
   tags:
-    - plugin
+    - lms_plugin
 
 - name: "[LMS] - Convert prefs-file state.prefs to yaml."
   ansible.builtin.set_fact:
     prefs_yaml: '{{ pref_file.content | b64decode | from_yaml }}'
   tags:
-    - plugin
+    - lms_plugin
 
 - name: "[LMS] - Set state.prefs for plugin-installation upon next server start."
   ansible.builtin.set_fact:
@@ -166,7 +161,7 @@
     pluginname: "{{ item.matches[0].plugin.name }}"
     title: "{{ 'title \"' ~ item.item.title ~ '\" and ' if item.item.title is defined else '' }}"
   tags:
-    - plugin
+    - lms_plugin
 
 - name: "[LMS] - Write prefs-file state.prefs."
   ansible.builtin.template:
@@ -176,7 +171,7 @@
     group: "{{ lms_group }}"
     mode: u=rw,g=rw,o=r
   tags:
-    - plugin
+    - lms_plugin
 
 # Manually modify extensions.prefs file. Could also be done through json-api call.
 - name: "{{ '[LMS] - Read prefs-file ' ~ lms_settings_dir ~ '/plugin/extensions.prefs.' }}"
@@ -184,13 +179,13 @@
     src: "{{ lms_settings_dir }}/prefs/plugin/extensions.prefs"
   register: pref_file
   tags:
-    - plugin
+    - lms_plugin
 
 - name: "[LMS] - Convert prefs-file extensions.prefs to yaml."
   ansible.builtin.set_fact:
     prefs_yaml: '{{ pref_file.content | b64decode | from_yaml }}'
   tags:
-    - plugin
+    - lms_plugin
 
 - name: "[LMS] - Set extensions.prefs for plugin-installation upon next server start."
   ansible.builtin.set_fact:
@@ -202,7 +197,7 @@
     pluginname: "{{ item.matches[0].plugin.name }}"
     title: "{{ 'title \"' ~ item.item.title ~ '\" and ' if item.item.title is defined else '' }}"
   tags:
-    - plugin
+    - lms_plugin
 
 - name: "[LMS] - Write prefs-file extensions.prefs."
   ansible.builtin.template:
@@ -212,7 +207,7 @@
     group: "{{ lms_group }}"
     mode: u=rw,g=rw,o=r
   tags:
-    - plugin
+    - lms_plugin
 
 # Restart the server to install the plugins and create plugin prefs-files.
 - name: "[LMS] - Restart the server to complete plugin-installation."
@@ -220,13 +215,13 @@
     name: logitechmediaserver
     state: restarted
   tags:
-    - plugin
+    - lms_plugin
 
-- name: "{{ '[LMS] - Wait availability of port ' ~ lms_rpcport ~ ', which indicates server ready.' }}"
+- name: "{{ '[LMS] - Wait server-restart completed and server ready. This is indicated when port ' ~ lms_rpcport ~ ' is available.' }}"
   ansible.builtin.wait_for:
     port: "{{ lms_rpcport }}"
   tags:
-    - plugin
+    - lms_plugin
 
 # Configure the server and its config-files through jsonrpc-API.
 # Note: The config through telnet did not work, although manually via
@@ -244,7 +239,7 @@
       params: [" ", "{{ item }}"]
   loop: "{{ lms_settings }}"
   tags:
-    - conf
+    - lms_conf
 
 # Restart the server.
 - name: "[LMS] - Restart the server to complete plugin-installation."
@@ -252,4 +247,10 @@
     name: logitechmediaserver
     state: restarted
   tags:
-    - conf
+    - lms_conf
+
+- name: "{{ '[LMS] - Wait server-restart completed and server ready. This is indicated when port ' ~ lms_rpcport ~ ' is available.' }}"
+  ansible.builtin.wait_for:
+    port: "{{ lms_rpcport }}"
+  tags:
+    - lms_conf
