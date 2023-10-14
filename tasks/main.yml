@@ -242,7 +242,7 @@
     - lms_conf
 
 # Restart the server.
-- name: "[LMS] - Restart the server to complete plugin-installation."
+- name: "[LMS] - Restart the server to complete configuration."
   ansible.builtin.systemd:
     name: logitechmediaserver
     state: restarted
